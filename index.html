@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📸 세계 여행 네 컷 사진 📸</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
+    <style>
+        body { font-family: 'Pretendard', sans-serif; background-color: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        h1 { color: #333; text-align: center; margin-bottom: 5px; }
+        .subtitle { color: #666; margin-bottom: 20px; }
+        
+        .container { display: flex; gap: 40px; flex-wrap: wrap; justify-content: center; max-width: 1200px;}
+        
+        /* 카메라 화면 영역 */
+        .camera-section { display: flex; flex-direction: column; align-items: center; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 640px; }
+        
+        /* 웹캠 배경 합성을 위한 래퍼 */
+        .camera-wrapper { position: relative; width: 100%; border-radius: 10px; background-color: #ddd; overflow: hidden; background-repeat: no-repeat; background-size: cover; background-position: center; }
+        canvas { width: 100%; height: auto; display: block; }
+        
+        .controls { margin-top: 15px; display: flex; flex-direction: column; gap: 15px; width: 100%; }
+        .control-group { display: flex; flex-direction: column; gap: 8px; background: #f8f9fa; padding: 15px; border-radius: 8px; }
+        .control-group label.title { font-weight: bold; font-size: 15px; color: #333; }
+        
+        select, button, input[type="file"], input[type="text"] { padding: 12px 15px; border-radius: 6px; border: 1px solid #ccc; font-size: 15px; font-family: 'Pretendard', sans-serif; }
+        select { background-color: white; cursor: pointer; font-weight: bold; color: #333; }
+        input[type="file"] { background: white; cursor: pointer; border: 1px dashed #aaa; }
+        
+        #captureBtn { background: #ff4757; color: white; border: none; padding: 15px; font-size: 18px; font-weight: bold; cursor: pointer; transition: 0.2s; margin-top: 5px; box-shadow: 0 4px 6px rgba(255, 71, 87, 0.3); }
+        #captureBtn:hover { background: #ff6b81; transform: translateY(-2px); }
+        #status { font-size: 20px; font-weight: bold; color: #ff4757; margin-top: 10px; height: 30px; text-align: center; }
+        
+        /* 네컷 사진 프레임 영역 */
+        .frame-section { display: flex; flex-direction: column; align-items: center; }
+        .photo-frame { width: 300px; padding: 20px 20px 80px 20px; background: #000000; display: flex; flex-direction: column; gap: 15px; border-radius: 5px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); position: relative; }
+        .photo-slot { width: 100%; height: 190px; border-radius: 4px; object-fit: cover; background-color: rgba(255,255,255,0.1); background-repeat: no-repeat; background-size: cover; background-position: center; }
+        
+        /* 텍스트 및 날짜 표시 영역 */
+        #frameTextDisplay { position: absolute; bottom: 35px; left: 0; width: 100%; text-align: center; color: white; font-size: 22px; font-weight: 900; letter-spacing: 1px; z-index: 10; }
+        #frameDateDisplay { position: absolute; bottom: 15px; right: 20px; color: white; font-size: 12px; font-weight: bold; opacity: 0.9; z-index: 10; }
+        
+        #downloadBtn { margin-top: 20px; background: #2ed573; color: white; border: none; font-weight: bold; width: 100%; padding: 15px; cursor: pointer; transition: 0.2s; border-radius: 8px; font-size: 16px;}
+        #downloadBtn:hover { background: #26b963; }
+    </style>
+</head>
+<body>
+
+    <h1>📸 세계 여행 네 컷 사진 📸</h1>
+    <p class="subtitle">여행할 나라를 선택하고 실시간 네컷 사진을 찍어보세요!</p>
+
+    <div class="container">
+        <div class="camera-section">
+            <div class="camera-wrapper" id="cameraWrapper">
+                <video id="input_video" style="display:none;" autoplay playsinline></video>
+                <canvas id="output_canvas" width="640" height="480"></canvas>
+            </div>
+            
+            <div id="status">로딩 중... 카메라를 허용해주세요.</div>
+
+            <div class="controls">
+                <div class="control-group">
+                    <label class="title">1. 여행할 나라 고르기</label>
+                    <select id="countrySelect">
+                        <option value="none">-- 나라를 선택하세요 --</option>
+                        <option value="usa">🇺🇸 미국 (빨강)</option>
+                        <option value="japan">🇯🇵 일본 (빨강)</option>
+                        <option value="canada">🇨🇦 캐나다 (빨강)</option>
+                        <option value="vietnam">🇻🇳 베트남 (하늘색)</option>
+                        <option value="brazil">🇧🇷 브라질 (노랑)</option>
+                        <option value="uk">🇬🇧 영국 (남색)</option>
+                        <option value="egypt">🇪🇬 이집트 (까망)</option>
+                        <option value="china">🇨🇳 중국 (버건디)</option>
+                        <option value="kenya">🇰🇪 케냐 (초록)</option>
+                        <option value="france">🇫🇷 프랑스 (파랑)</option>
+                        <option value="australia">🇦🇺 호주 (민트)</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label class="title">2. 하단 문구 입력 (선택)</label>
+                    <input type="text" id="customTextInput" placeholder="예: 우리 반 세계 여행">
+                </div>
+
+                <button id="captureBtn">📸 4컷 자동 촬영 시작 (3초 간격)</button>
+            </div>
+        </div>
+
+        <div class="frame-section">
+            <div class="photo-frame" id="finalFrame">
+                <div class="photo-slot" id="cut1"></div>
+                <div class="photo-slot" id="cut2"></div>
+                <div class="photo-slot" id="cut3"></div>
+                <div class="photo-slot" id="cut4"></div>
+                <div id="frameTextDisplay"></div>
+                <div id="frameDateDisplay"></div>
+            </div>
+            <button id="downloadBtn">이미지로 저장하기</button>
+        </div>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const statusElement = document.getElementById('status');
+        const cameraWrapper = document.getElementById('cameraWrapper');
+        const countrySelect = document.getElementById('countrySelect');
+        const finalFrame = document.getElementById('finalFrame');
+        
+        let currentCutIndex = -1; // 현재 촬영 중인 컷 번호 (0~3)
+        let loadedImages = {}; // 캐시된 이미지 객체들을 저장할 공간
+
+        // 🌟 [중요] 선생님의 깃허브 정보 및 나라별 설정 지도 (확장자 .png 반영)
+        const GITHUB_USERNAME = "sae6gnicky";
+        const GITHUB_REPO = "world";
+        
+        const countryData = {
+            "usa": { frameColor: "#e90307", folderName: "usa" },
+            "japan": { frameColor: "#e90307", folderName: "japan" },
+            "canada": { frameColor: "#e90307", folderName: "canada" },
+            "vietnam": { frameColor: "#a3dbef", folderName: "vietnam" },
+            "brazil": { frameColor: "#f9ca02", folderName: "brazil" },
+            "uk": { frameColor: "#192a56", folderName: "uk" },
+            "egypt": { frameColor: "#111111", folderName: "ezypt" },
+            "china": { frameColor: "#800020", folderName: "china" },
+            "kenya": { frameColor: "#105221", folderName: "kenya" },
+            "france": { frameColor: "#1e3799", folderName: "france" },
+            "australia": { frameColor: "#bbe4cd", folderName: "austrailia" }
+        };
+
+        // 날짜 설정
+        const today = new Date();
+        const dateString = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
+        document.getElementById('frameDateDisplay').innerText = dateString;
+
+        // 하단 문구 실시간 반영
+        document.getElementById('customTextInput').addEventListener('input', (e) => {
+            document.getElementById('frameTextDisplay').innerText = e.target.value;
+        });
+
+        // 특정 나라의 n번째 이미지 URL을 생성하는 함수 (.png 고정)
+        function getImageUrl(country, index) {
+            if (!countryData[country]) return "";
+            const folder = countryData[country].folderName;
+            return `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${GITHUB_REPO}/main/${folder}/${index}.png`;
+        }
+
+        // 나라 선택 시 미리보기 및 테두리 색상 즉시 변경
+        countrySelect.addEventListener('change', async () => {
+            const country = countrySelect.value;
+            currentCutIndex = -1; // 촬영 대기상태로 초기화
+            
+            if (country === 'none') {
+                cameraWrapper.style.backgroundImage = 'none';
+                finalFrame.style.backgroundColor = '#000000';
+                clearSlots();
+                return;
+            }
+
+            // 테두리 색상 변경 및 텍스트 색상 자동 반전 처리
+            const color = countryData[country].frameColor;
+            finalFrame.style.backgroundColor = color;
+            const hex = color.replace('#', '');
+            const yiq = ((parseInt(hex.substr(0, 2), 16) * 299) + (parseInt(hex.substr(2, 2), 16) * 587) + (parseInt(hex.substr(4, 2), 16) * 114)) / 1000;
+            const textColor = (yiq >= 128) ? '#000000' : '#ffffff';
+            document.getElementById('frameTextDisplay').style.color = textColor;
+            document.getElementById('frameDateDisplay').style.color = textColor;
+
+            statusElement.innerText = `${countrySelect.options[countrySelect.selectedIndex].text} 배경을 불러오는 중...`;
+            
+            // 미리 4장의 이미지를 선로딩(프리로드)하여 끊김이 없도록 처리
+            loadedImages[country] = [];
+            for (let i = 1; i <= 4; i++) {
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                img.src = getImageUrl(country, i);
+                await new Promise((resolve) => {
+                    img.onload = () => { loadedImages[country][i-1] = img; resolve(); };
+                    img.onerror = () => { resolve(); }; // 에러 나도 멈추지 않게
+                });
+            }
+
+            statusElement.innerText = "배경 로드 완료! 촬영 버튼을 눌러주세요.";
+            updateCameraBackground();
+            updateSlotsPreview();
+        });
+
+        // 카메라 뒤에 현재 촬영 차례에 맞는 배경을 띄워주는 함수
+        function updateCameraBackground() {
+            const country = countrySelect.value;
+            if (country === 'none' || !loadedImages[country]) return;
+            
+            // 촬영 중이면 해당 번호 배경, 대기 중이면 1번 배경을 가이드로 보여줌
+            const idx = currentCutIndex >= 0 ? currentCutIndex : 0;
+            if (loadedImages[country][idx]) {
+                cameraWrapper.style.backgroundImage = `url(${loadedImages[country][idx].src})`;
+            }
+        }
+
+        // 우측 프레임 슬롯에 미리 배경 가이드를 깔아주는 함수
+        function updateSlotsPreview() {
+            const country = countrySelect.value;
+            if (country === 'none' || !loadedImages[country]) return;
+
+            for(let i=0; i<4; i++) {
+                const slot = document.getElementById(`cut${i+1}`);
+                if (loadedImages[country][i]) {
+                    slot.style.backgroundImage = `url(${loadedImages[country][i].src})`;
+                }
+            }
+        }
+
+        function clearSlots() {
+            for(let i=1; i<=4; i++) {
+                const slot = document.getElementById(`cut${i}`);
+                slot.style.backgroundImage = 'none';
+                slot.innerHTML = '';
+            }
+        }
+
+        // MediaPipe 세그멘테이션 (사람 누끼만 따기)
+        function onResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.segmentationMask, 0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.globalCompositeOperation = 'source-in';
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.restore();
+        }
+
+        const selfieSegmentation = new SelfieSegmentation({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`;
+        }});
+        selfieSegmentation.setOptions({ modelSelection: 1 });
+        selfieSegmentation.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { 
+                await selfieSegmentation.send({image: videoElement}); 
+                if(statusElement.innerText === "로딩 중... 카메라를 허용해주세요.") {
+                    statusElement.innerText = "준비 완료! 나라를 고르고 촬영하세요.";
+                }
+            },
+            width: 640, height: 480
+        });
+        camera.start();
+
+        // 타이머 카운트다운 함수
+        async function wait(seconds) {
+            return new Promise(resolve => {
+                let left = seconds;
+                const timer = setInterval(() => {
+                    statusElement.innerText = left > 0 ? `찰칵 ${left}초 전...` : "📸 찰칵!";
+                    left--;
+                    if(left < 0) {
+                        clearInterval(timer);
+                        setTimeout(resolve, 300); 
+                    }
+                }, 1000);
+            });
+        }
+
+        // 촬영 버튼 클릭 이벤트
+        document.getElementById('captureBtn').addEventListener('click', async () => {
+            const country = countrySelect.value;
+            if (country === 'none') {
+                alert("먼저 여행할 나라를 선택해주세요!");
+                return;
+            }
+
+            document.getElementById('captureBtn').disabled = true;
+            
+            for(let i = 0; i < 4; i++) {
+                currentCutIndex = i;
+                updateCameraBackground(); // 실시간으로 카메라 뒤 배경 교체
+                
+                await wait(3);
+                
+                // 투명 누끼 캔버스를 이미지 태그로 뽑아내서 슬롯 안에 스티커처럼 추가
+                const imgData = canvasElement.toDataURL('image/png');
+                const slot = document.getElementById(`cut${i+1}`);
+                slot.innerHTML = `<img src="${imgData}" style="width:100%; height:100%; object-fit:cover; display:block;">`;
+                
+                statusElement.innerText = `${i+1}번째 사진 촬영 완료!`;
+                await new Promise(r => setTimeout(r, 1000));
+            }
+            
+            currentCutIndex = -1;
+            updateCameraBackground();
+            statusElement.innerText = "✨ 세계 여행 인생네컷 완성! ✨";
+            document.getElementById('captureBtn').disabled = false;
+        });
+
+        // 최종 이미지 합쳐서 다운로드
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            const country = countrySelect.value;
+            if (country === 'none') return;
+
+            const finalCanvas = document.createElement('canvas');
+            finalCanvas.width = 400;
+            finalCanvas.height = 1000;
+            const ctx = finalCanvas.getContext('2d');
+
+            // 1. 설정된 나라별 고유 테두리 색상 채우기
+            ctx.fillStyle = countryData[country].frameColor;
+            ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+
+            // 2. 각 칸마다 깃허브 배경 먼저 깔고, 그 위에 촬영된 누끼 사진 입히기
+            const padX = 25, padTop = 25, gap = 15;
+            const imgWidth = 350, imgHeight = 190;
+            
+            for(let i=0; i<4; i++) {
+                const slot = document.getElementById(`cut${i+1}`);
+                const capturedImg = slot.querySelector('img');
+                const dy = padTop + (imgHeight + gap) * i;
+
+                // 배경 깔기
+                if (loadedImages[country] && loadedImages[country][i]) {
+                    ctx.drawImage(loadedImages[country][i], 0, 0, loadedImages[country][i].width, loadedImages[country][i].height, padX, dy, imgWidth, imgHeight);
+                }
+                // 사람 스티커 올리기
+                if (capturedImg) {
+                    const img = new Image();
+                    img.src = capturedImg.src;
+                    ctx.drawImage(img, padX, dy, imgWidth, imgHeight);
+                }
+            }
+
+            // 3. 문구 및 날짜 쓰기
+            const textColor = document.getElementById('frameTextDisplay').style.color || '#ffffff';
+            ctx.fillStyle = textColor;
+            
+            const customText = document.getElementById('customTextInput').value;
+            if (customText) {
+                ctx.font = '900 24px "Pretendard", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(customText, 200, 955);
+            }
+
+            ctx.font = 'bold 12px "Pretendard", sans-serif';
+            ctx.textAlign = 'right';
+            ctx.globalAlpha = 0.9;
+            ctx.fillText(dateString, 375, 978);
+
+            // 다운로드 링크 생성 (.jpg로 최종 병합 저장)
+            const link = document.createElement('a');
+            link.download = `World4Cut_${country}.jpg`;
+            link.href = finalCanvas.toDataURL('image/jpeg', 0.95);
+            link.click();
+        });
+    </script>
+</body>
+</html>
